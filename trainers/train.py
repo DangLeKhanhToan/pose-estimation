@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # print(sys.path)
 
 from utils.metrics import heatmap_to_coords, compute_all_metrics
+from utils.visualization import save_train_graph, save_val_graph
 def train_model(
     model,
     train_loader,
@@ -61,7 +62,17 @@ def train_model(
             for k, v in val_metrics.items():
                 val_log[k].append(v)
 
-        save_graph(train_log, val_log, f"runs/train{run_id}/metrics.png")
+        print(f"\nEpoch {epoch+1}/{num_epochs}")
+        print("Train Log:", {k: v[-1] for k, v in train_log.items()})
+        if len(val_log["loss"]) > 0:
+            print("Val Log:", {k: v[-1] for k, v in val_log.items()})
+
+
+
+
+        save_train_graph(train_log, f"runs/train{run_id}/train_metrics.png")
+        save_val_graph(val_log, f"runs/train{run_id}/val_metrics.png")
+
 
     return train_log, val_log
 
