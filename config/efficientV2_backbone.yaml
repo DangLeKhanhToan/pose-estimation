@@ -1,0 +1,8 @@
+MODEL:
+  NAME: pose_efficientnetv2
+  NUM_JOINTS: 33
+  PRETRAINED: "torchvision://efficientnet_v2_s"
+  OUTPUT_STRIDE: 4
+  UPSAMPLE_CHANNELS: [256, 128]
+LOSS:
+  WITH_AE_LOSS: [False]
