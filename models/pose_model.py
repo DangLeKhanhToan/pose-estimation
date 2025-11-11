@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import time
 
-from backbones.EfficientNetV2 import EfficientNetV2Backbone
-from backbones.ResNet import ResNetBackbone
+from .backbones.EfficientNetV2 import EfficientNetV2Backbone
+from .backbones.ResNet import ResNetBackbone
 # from backbones.HRNet import HRNetBackbone
 # from backbones.HigherHRNet import HigherHRNetBackbone
 
