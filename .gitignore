@@ -207,3 +207,4 @@ marimo/_lsp/
 __marimo__/
 data/
 yolo_dataset_split.zip
+runs/
