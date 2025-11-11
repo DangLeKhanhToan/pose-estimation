@@ -62,7 +62,6 @@ def train_model(
             for k, v in val_metrics.items():
                 val_log[k].append(v)
 
-        print(f"\nEpoch {epoch+1}/{num_epochs}")
         print("Train Log:", {k: v[-1] for k, v in train_log.items()})
         if len(val_log["loss"]) > 0:
             print("Val Log:", {k: v[-1] for k, v in val_log.items()})

@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 
 class YOLOLoader(Dataset):
-    def __init__(self, img_dir, label_dir, input_size=(256,192), num_joints=33, transform=None):
+    def __init__(self, img_dir, label_dir, input_size=(640,640), num_joints=33, transform=None):
         self.img_dir = img_dir
         self.label_dir = label_dir
         self.input_size = input_size
@@ -65,7 +65,11 @@ class YOLOLoader(Dataset):
 
         img = cv2.imread(img_path)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = cv2.resize(img, self.input_size)
+
+        orig_h, orig_w = img.shape[:2]
+        input_w, input_h = self.input_size
+
+        img = cv2.resize(img, (input_w, input_h))
 
         # Safe default
         keypoints = np.zeros((self.num_joints, 3), dtype=np.float32)
@@ -81,6 +85,18 @@ class YOLOLoader(Dataset):
                 keypoints[:count] = raw[:count]
                 break
 
+        # Scale keypoints from original size to resized image
+        scale_x = input_w / orig_w
+        scale_y = input_h / orig_h
+
+        keypoints[:, 0] *= scale_x  # x
+        keypoints[:, 1] *= scale_y  # y
+
+        # # Normalize keypoints to [0,1]
+        # keypoints[:, 0] /= input_w
+        # keypoints[:, 1] /= input_h
+
         img = self.transform(img)
-        return img, torch.tensor(keypoints, dtype=torch.float32)
+        return img, torch.tensor(keypoints, dtype=torch.float32)            
+
 

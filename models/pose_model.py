@@ -34,7 +34,8 @@ class PoseModel(nn.Module):
         x = self.backbone(x)
         x = torch.relu(self.bn1(self.deconv1(x)))
         x = torch.relu(self.bn2(self.deconv2(x)))
-        return self.final_layer(x)
+        x = torch.sigmoid(self.final_layer(x)) 
+        return x
 
 
 def test_latency(backbone="efficientnetv2", device="cuda" if torch.cuda.is_available() else "cpu"):

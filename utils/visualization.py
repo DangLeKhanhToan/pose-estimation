@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 
 def save_train_graph(train_log, path):
     plt.figure(figsize=(10, 6))
