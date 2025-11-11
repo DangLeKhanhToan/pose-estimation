@@ -2,13 +2,22 @@ import torch
 from tqdm import tqdm
 import os
 import matplotlib.pyplot as plt
-import sys, os
 import numpy as np
+import argparse
+import sys
+
+# Add project root to sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-# print(sys.path)
 
 from utils.metrics import heatmap_to_coords, compute_all_metrics
 from utils.visualization import save_train_graph, save_val_graph
+from models.pose_model import PoseModel
+from dataloader.yolo_dataset import YOLOLoader
+from trainers.loss import HeatmapLoss
+from trainers.optimize import create_optimizer
+
+
+# ------------------------ TRAIN LOOP ------------------------
 def train_model(
     model,
     train_loader,
@@ -31,21 +40,20 @@ def train_model(
 
         for imgs, gt_keypoints in pbar:
             imgs = imgs.to(device)
-            gt_keypoints = gt_keypoints.numpy()  # [B, 33, 3]
+            gt_keypoints = gt_keypoints.numpy()
 
             preds = model(imgs)
-            loss = criterion(preds, torch.zeros_like(preds).to(device))  # placeholder, replace with GT heatmaps
+            loss = criterion(preds, torch.zeros_like(preds).to(device))  # placeholder
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
 
-            # Convert heatmaps → keypoints
             preds_np = heatmap_to_coords(preds.detach().cpu())
             all_preds.append(preds_np)
             all_gts.append(gt_keypoints)
-            pbar.set_postfix(loss=f"{loss.item():.4f}")
+            pbar.set_postfix(loss=f"{loss.item():.6f}")
 
         all_preds = np.concatenate(all_preds, axis=0)
         all_gts = np.concatenate(all_gts, axis=0)
@@ -66,16 +74,13 @@ def train_model(
         if len(val_log["loss"]) > 0:
             print("Val Log:", {k: v[-1] for k, v in val_log.items()})
 
-
-
-
         save_train_graph(train_log, f"runs/train{run_id}/train_metrics.png")
         save_val_graph(val_log, f"runs/train{run_id}/val_metrics.png")
-
 
     return train_log, val_log
 
 
+# ------------------------ VALIDATION ------------------------
 def validate_model(model, loader, criterion, device="cuda"):
     model.eval()
     total_loss = 0
@@ -97,47 +102,50 @@ def validate_model(model, loader, criterion, device="cuda"):
     return total_loss / len(loader), metrics
 
 
-def save_graph(train_log, val_log, path):
-    plt.figure(figsize=(10, 6))
-    plt.subplot(2, 1, 1)
-    plt.plot(train_log["loss"], label="Train Loss")
-    if len(val_log["loss"]) > 0:
-        plt.plot(np.arange(2, len(val_log["loss"]) * 3 + 1, 3), val_log["loss"], label="Val Loss")
-    plt.legend()
-    plt.title("Loss Curve")
+# ------------------------ ARGPARSE ENTRY ------------------------
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train Pose Estimation Model")
 
-    plt.subplot(2, 1, 2)
-    for k in ["OKS", "PCK", "PCP", "PDJ"]:
-        plt.plot(train_log[k], label=f"Train {k}")
-        if len(val_log[k]) > 0:
-            plt.plot(np.arange(2, len(val_log[k]) * 3 + 1, 3), val_log[k], label=f"Val {k}")
-    plt.legend()
-    plt.title("Metrics Curve")
-    plt.tight_layout()
-    plt.savefig(path)
-    plt.close()
+    parser.add_argument("--train_path", type=str, required=True,
+                        help="Path to training data folder (contains 'images' and 'labels')")
+    parser.add_argument("--val_path", type=str, required=True,
+                        help="Path to validation data folder (contains 'images' and 'labels')")
+    parser.add_argument("--input_size", type=int, nargs=2, default=[640, 640],
+                        help="Input image size (width height)")
+    parser.add_argument("--batch_size", type=int, default=8,
+                        help="Batch size for training")
+    parser.add_argument("--epochs", type=int, default=30,
+                        help="Number of epochs to train")
+    parser.add_argument("--lr", type=float, default=1e-3,
+                        help="Learning rate")
 
+    return parser.parse_args()
 
 
-from models.pose_model import PoseModel
-from dataloader.yolo_dataset import YOLOLoader
-from trainers.loss import HeatmapLoss
-from trainers.optimize import create_optimizer
-from trainers.train import train_model
+# ------------------------ MAIN SCRIPT ------------------------
+if __name__ == "__main__":
+    args = parse_args()
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
 
-train_loader = torch.utils.data.DataLoader(
-    YOLOLoader("data/images/train", "data/labels/train"),
-    batch_size=8, shuffle=True
-)
-val_loader = torch.utils.data.DataLoader(
-    YOLOLoader("data/images/val", "data/labels/val"),
-    batch_size=8, shuffle=False
-)
+    train_img_dir = os.path.join(args.train_path, "images")
+    train_label_dir = os.path.join(args.train_path, "labels")
+    val_img_dir = os.path.join(args.val_path, "images")
+    val_label_dir = os.path.join(args.val_path, "labels")
 
-model = PoseModel("efficientnetv2", num_joints=33).to(device)
-criterion = HeatmapLoss()
-optimizer = create_optimizer(model, {"optimizer": "adam", "lr": 1e-3})
+    train_loader = torch.utils.data.DataLoader(
+        YOLOLoader(train_img_dir, train_label_dir, input_size=tuple(args.input_size)),
+        batch_size=args.batch_size, shuffle=True
+    )
+    val_loader = torch.utils.data.DataLoader(
+        YOLOLoader(val_img_dir, val_label_dir, input_size=tuple(args.input_size)),
+        batch_size=args.batch_size, shuffle=False
+    )
 
-train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=30, device=device, run_id=1)
+    model = PoseModel("efficientnetv2", num_joints=33).to(device)
+    criterion = HeatmapLoss()
+    optimizer = create_optimizer(model, {"optimizer": "adam", "lr": args.lr})
+
+    train_model(model, train_loader, val_loader, criterion, optimizer,
+                num_epochs=args.epochs, device=device, run_id=1)
