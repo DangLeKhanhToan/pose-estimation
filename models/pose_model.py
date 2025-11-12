@@ -32,9 +32,12 @@ class PoseModel(nn.Module):
 
     def forward(self, x):
         x = self.backbone(x)
+        # print("Backbone output shape:", x.shape)
         x = torch.relu(self.bn1(self.deconv1(x)))
+        # print("After deconv1 shape:", x.shape)
         x = torch.relu(self.bn2(self.deconv2(x)))
-        x = torch.sigmoid(self.final_layer(x)) 
+        # print("After deconv2 shape:", x.shape)
+        x = self.final_layer(x)
         return x
 
 
