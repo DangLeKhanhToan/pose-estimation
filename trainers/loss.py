@@ -4,15 +4,17 @@ import torch.nn as nn
 class HeatmapLoss(nn.Module):
     def __init__(self):
         super().__init__()
-        self.criterion = nn.MSELoss()
-    
-    def forward(self, preds, targets):
-        # preds: (B, num_joints, H, W)
-        # targets: (B, num_joints, H, W)
-        return self.criterion(preds, targets)
+        self.criterion = nn.MSELoss(reduction='mean')
+
+    def forward(self, preds, targets, target_weight=None):
+        if target_weight is not None:
+            # apply mask per joint
+            loss = ((preds - targets) ** 2) * target_weight
+            return loss.mean()
+        else:
+            return self.criterion(preds, targets)
 
 class JointMSELoss(nn.Module):
-    """MSE Loss with joint visibility weighting"""
     def __init__(self, use_target_weight=True):
         super().__init__()
         self.criterion = nn.MSELoss(reduction='none')
@@ -32,35 +34,35 @@ class JointMSELoss(nn.Module):
         
         return loss.mean()
     
-class AdaptiveWingLoss(nn.Module):
-    """
-    Adaptive Wing Loss - Better for heatmap regression
-    Paper: "Adaptive Wing Loss for Robust Face Alignment via Heatmap Regression"
-    """
-    def __init__(self, omega=14, theta=0.5, epsilon=1, alpha=2.1):
-        super().__init__()
-        self.omega = omega
-        self.theta = theta
-        self.epsilon = epsilon
-        self.alpha = alpha
-    
-    def forward(self, preds, targets):
-        delta = (targets - preds).abs()
-        
-        A = self.omega * (1 / (1 + torch.pow(self.theta / self.epsilon, 
-                                              self.alpha - targets))) * \
-            (self.alpha - targets) * torch.pow(self.theta / self.epsilon, 
-                                                self.alpha - targets - 1) * \
-            (1 / self.epsilon)
-        
-        C = self.theta * A - self.omega * torch.log(1 + torch.pow(
-            self.theta / self.epsilon, self.alpha - targets))
-        
-        losses = torch.where(
-            delta < self.theta,
-            self.omega * torch.log(1 + torch.pow(delta / self.epsilon, 
-                                                   self.alpha - targets)),
-            A * delta - C
-        )
-        
-        return losses.mean()
+
+def generate_target(joints_3d, num_joints, heatmap_size=(64, 64), sigma=2, feat_stride=(4, 4)):
+    target_weight = np.ones((num_joints, 1), dtype=np.float32)
+    target_weight[:, 0] = joints_3d[:, 0, 1]  # visibility flag
+    target = np.zeros((num_joints, heatmap_size[0], heatmap_size[1]), dtype=np.float32)
+    tmp_size = sigma * 3
+
+    for i in range(num_joints):
+        mu_x = int(joints_3d[i, 0, 0] / feat_stride[0] + 0.5)
+        mu_y = int(joints_3d[i, 1, 0] / feat_stride[1] + 0.5)
+
+        ul = [int(mu_x - tmp_size), int(mu_y - tmp_size)]
+        br = [int(mu_x + tmp_size + 1), int(mu_y + tmp_size + 1)]
+        if (ul[0] >= heatmap_size[1] or ul[1] >= heatmap_size[0] or br[0] < 0 or br[1] < 0):
+            target_weight[i] = 0
+            continue
+
+        size = 2 * tmp_size + 1
+        x = np.arange(0, size, 1, np.float32)
+        y = x[:, np.newaxis]
+        x0 = y0 = size // 2
+        g = np.exp(-((x - x0)**2 + (y - y0)**2) / (2 * sigma**2))
+
+        g_x = max(0, -ul[0]), min(br[0], heatmap_size[1]) - ul[0]
+        g_y = max(0, -ul[1]), min(br[1], heatmap_size[0]) - ul[1]
+        img_x = max(0, ul[0]), min(br[0], heatmap_size[1])
+        img_y = max(0, ul[1]), min(br[1], heatmap_size[0])
+
+        if target_weight[i] > 0.5:
+            target[i, img_y[0]:img_y[1], img_x[0]:img_x[1]] = g[g_y[0]:g_y[1], g_x[0]:g_x[1]]
+
+    return target, np.expand_dims(target_weight, -1)

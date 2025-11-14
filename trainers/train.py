@@ -7,9 +7,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from utils.metrics import heatmap_to_coords, compute_all_metrics
-from utils.visualization import save_train_graph, save_val_graph
+# from utils.visualization import save_train_graph, save_val_graph
 from models.pose_model import PoseModel
-from dataloader.yolo_dataset import YOLOPoseDataset  # ✅ USE NEW HEATMAP LOADER
+from dataloader.yolo_dataset import YOLOPoseDataset
 from trainers.loss import HeatmapLoss, JointMSELoss
 from trainers.optimize import create_optimizer
 
@@ -40,15 +40,43 @@ def train_model(
         
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}")
         
-        for imgs, gt_heatmaps in pbar: 
+        for data in pbar: 
+            imgs = data["image"]
+            gt_heatmaps = data["heatmaps"]
+            mask = data["mask"]
+            kpts = data["kpts"]
+            vis = data["vis"]
+            name = data["name"] 
+
             imgs = imgs.to(device)
             gt_heatmaps = gt_heatmaps.to(device)
             pred_heatmaps = model(imgs)
+            bs, num_joints, h, w = pred_heatmaps.size()
+
+            print("gt_heatmaps shape:", gt_heatmaps.shape)
+            print("pred_heatmaps shape:", pred_heatmaps.shape)
+
+            idx = gt_heatmaps.view(bs, num_joints, -1).argmax(dim=2)
+            pred_values = pred_heatmaps.view(bs, num_joints, -1).gather(2, idx.unsqueeze(-1)).squeeze(-1)
 
             # print("Pred heatmaps shape:", pred_heatmaps.shape)
             # print("GT heatmaps shape:", gt_heatmaps.shape)  
             
-            loss = criterion(pred_heatmaps, gt_heatmaps)
+            loss = criterion(pred_values, torch.ones_like(pred_values).to(device))
+
+
+            
+            print("pred_heatmaps heatmaps shape:", pred_heatmaps.shape)
+            print("gt_heatmaps heatmap max value:", gt_heatmaps.max().item())
+            print("gt_heatmaps heatmap min value:", gt_heatmaps.min().item())
+            print("gt_heatmaps heatmap mean value:", gt_heatmaps.mean().item())
+
+            print("pred_heatmaps heatmap max value:", pred_heatmaps.max().item())
+            print("pred_heatmaps heatmap min value:", pred_heatmaps.min().item())
+            print("pred_heatmaps heatmap mean value:", pred_heatmaps.mean().item())
+
+
+            print("Current batch loss:", loss.item())
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -100,9 +128,9 @@ def train_model(
                 print(f"✅ Saved best model (val_loss: {val_loss:.6f})")
         
         # Save metrics graphs
-        save_train_graph(train_log, f"runs/train{run_id}/train_metrics.png")
-        if len(val_log["loss"]) > 0:
-            save_val_graph(val_log, f"runs/train{run_id}/val_metrics.png")
+        # save_train_graph(train_log, f"runs/train{run_id}/train_metrics.png")
+        # if len(val_log["loss"]) > 0:
+        #     save_val_graph(val_log, f"runs/train{run_id}/val_metrics.png")
         
         # Save checkpoint every 10 epochs
         if (epoch + 1) % 10 == 0:
