@@ -50,6 +50,13 @@ class YOLOPoseDataset(Dataset):
                 values = list(map(float, parts[1:])) 
                 if all(v == 0 for v in values):
                     continue
+                elif (values[2] == 0) or (values[3] == 0):
+                    # print(values[2])
+                    # print(values[3])
+                    # print(values)
+                    failed += 1
+                    # print(ngu)
+                    continue
                 self.samples.append({
                     'img_name': img_name,
                     'label_line': line,
@@ -113,6 +120,10 @@ class YOLOPoseDataset(Dataset):
         # Normalize keypoints to cropped image size
         kpts_xy_norm_crop = kpts_xy_abs.copy()
 
+        if (crop_w == 0 or crop_h == 0): 
+            print(f"\nImage have error: {img_name} at label {label_line}")
+            print(f"\nx1 = {x1}, y1 = {y1}, x2 = {x2}, y2 = {y2}\n")
+        
         kpts_xy_norm_crop[:, 0] /= crop_w
         kpts_xy_norm_crop[:, 1] /= crop_h
         

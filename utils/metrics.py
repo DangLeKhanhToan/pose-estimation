@@ -82,9 +82,20 @@ def compute_pdj(preds, gts, threshold=0.05):
 
 
 def compute_all_metrics(preds, gts):
-    limbs = [(5, 6), (7, 8), (9, 10), (11, 12), (13, 14)]  # example skeleton
+    SKELETON = [
+        (9,11),(11,13),(13,15),           # left arm: shoulder-elbow-wrist
+        (10,12),(12,14),(14,16),          # right arm
+        (9,10),                           # shoulders
+        (15,16),(15,23),(16,24),          # hips & torso
+        (23,25),(25,27),(27,29),(29,31),  # left leg chain
+        (24,26),(26,28),(28,30),(30,32),  # right leg chain
+        (31,21),(32,22),(21,19),(22,20),  # feet/heels/ankles (approx)
+        (0,9),(0,10),                     # nose to shoulders
+        (1,2),(2,3),(4,5),(5,6),          # eyes chains
+        (7,9),(8,10)                      # ears to shoulders
+    ]
     oks = compute_oks(preds, gts)
     pck = compute_pck(preds, gts)
-    pcp = compute_pcp(preds, gts, limbs)
+    pcp = compute_pcp(preds, gts, SKELETON)
     pdj = compute_pdj(preds, gts)
     return {"OKS": oks, "PCK": pck, "PCP": pcp, "PDJ": pdj}

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 
 class HeatmapLoss(nn.Module):
     def __init__(self):
@@ -14,25 +15,31 @@ class HeatmapLoss(nn.Module):
         else:
             return self.criterion(preds, targets)
 
-class JointMSELoss(nn.Module):
+class JointsMSELoss(nn.Module):
     def __init__(self, use_target_weight=True):
-        super().__init__()
-        self.criterion = nn.MSELoss(reduction='none')
+        super(JointsMSELoss, self).__init__()
+        self.criterion = nn.MSELoss(reduction='mean')
         self.use_target_weight = use_target_weight
-    
-    def forward(self, preds, targets, target_weight=None):
-        batch_size = preds.size(0)
-        num_joints = preds.size(1)
-        
-        heatmaps_pred = preds.reshape((batch_size, num_joints, -1))
-        heatmaps_gt = targets.reshape((batch_size, num_joints, -1))
-        
-        loss = self.criterion(heatmaps_pred, heatmaps_gt)
-        
-        if self.use_target_weight and target_weight is not None:
-            loss = loss * target_weight.reshape((batch_size, num_joints, 1))
-        
-        return loss.mean()
+
+    def forward(self, output, target, target_weight):
+        batch_size = output.size(0)
+        num_joints = output.size(1)
+        heatmaps_pred = output.reshape((batch_size, num_joints, -1)).split(1, 1)
+        heatmaps_gt = target.reshape((batch_size, num_joints, -1)).split(1, 1)
+        loss = 0
+
+        for idx in range(num_joints):
+            heatmap_pred = heatmaps_pred[idx].squeeze()
+            heatmap_gt = heatmaps_gt[idx].squeeze()
+            if self.use_target_weight:
+                loss += 0.5 * self.criterion(
+                    heatmap_pred.mul(target_weight[:, idx]),
+                    heatmap_gt.mul(target_weight[:, idx])
+                )
+            else:
+                loss += 0.5 * self.criterion(heatmap_pred, heatmap_gt)
+
+        return loss / num_joints
     
 
 def generate_target(joints_3d, num_joints, heatmap_size=(64, 64), sigma=2, feat_stride=(4, 4)):
